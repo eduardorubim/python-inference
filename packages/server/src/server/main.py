@@ -1,11 +1,13 @@
 from pathlib import Path
 import os
-from pydantic import BaseModel, Field
-from typing import List
 
 from llama_cpp import Llama
+from collections.abc import Iterator
+
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
+
+from domain import CompletionRequest, CompletionResponse, CompletionChunk
 
 # ---------------------------------------------------------------------------
 # Model
@@ -18,54 +20,6 @@ llm = Llama(
     n_gpu_layers=-1,
     verbose=True,
 )
-
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
-class CompletionRequest(BaseModel):
-    prompt: str = Field(
-        ...,
-        description="The input text prompt that the language model will complete or respond to."
-    )
-    max_tokens: int = Field(
-        128,
-        ge=1,
-        description="The maximum number of tokens to generate in the completion. Must be at least 1."
-    )
-    temperature: float = Field(
-        1.0,
-        ge=0.0,
-        le=2.0,
-        description="Controls randomness in the output. Lower values make responses more deterministic; higher values increase creativity."
-    )
-    stop: List[str] = Field(
-        default_factory=list,
-        description="A list of stop sequences where the model will stop generating further tokens."
-    )
-
-
-class CompletionResponse(BaseModel):
-    text: str = Field(
-        ...,
-        description="The generated completion text produced by the language model."
-    )
-    finish_reason: str = Field(
-        ...,
-        description="The reason why the generation stopped (e.g., 'stop', 'length', or other conditions)."
-    )
-    prompt_tokens: int = Field(
-        ...,
-        description="The number of tokens consumed by the input prompt."
-    )
-    completion_tokens: int = Field(
-        ...,
-        description="The number of tokens generated in the completion."
-    )
-    total_tokens: int = Field(
-        ...,
-        description="The total number of tokens used (prompt_tokens + completion_tokens)."
-    )
 
 # ---------------------------------------------------------------------------
 # App
@@ -90,6 +44,29 @@ def complete(req: CompletionRequest) -> CompletionResponse:
         completion_tokens=usage["completion_tokens"],
         total_tokens=usage["total_tokens"],
     )
+
+@app.post("/v1/completions/stream")
+def complete_stream(req: CompletionRequest):
+    def _generate() -> Iterator[str]:
+        raw_iter = llm.create_completion(
+            prompt=req.prompt,
+            max_tokens=req.max_tokens,
+            temperature=req.temperature,
+            stop=req.stop,
+            stream=True,
+        )
+        for raw in raw_iter:
+            choice = raw["choices"][0]
+            chunk = CompletionChunk(
+                text=choice["text"],
+                finish_reason=choice["finish_reason"],
+                index=choice["index"],
+            )
+            yield f"data: {chunk.model_dump_json()}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
 
 # ---------------------------------------------------------------------------
 # Run

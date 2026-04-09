@@ -1,21 +1,55 @@
+"""CLI entry-point — subcommands: completion | stream."""
 import argparse
+import sys
 
-def main():
-    # 1. Initialize parser with a description for the helper
-    parser = argparse.ArgumentParser(description="A simple CLI tool example.")
+from domain import CompletionRequest
+from cli.request import post_completion, post_stream
 
-    # 2. Add arguments with 'help' strings for the helper menu
-    parser.add_argument("name", help="The name of the user to greet")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
 
-    # 3. Parse the arguments
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="cli",
+        description="LLM inference CLI (gemma-4 via local server)",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # --- completion (blocking) ---
+    p_comp = sub.add_parser("completion", help="Single blocking completion")
+    p_comp.add_argument("prompt", help="Input prompt")
+    p_comp.add_argument("--max-tokens", type=int, default=128)
+    p_comp.add_argument("--temperature", type=float, default=1.0)
+
+    # --- stream (SSE) ---
+    p_stream = sub.add_parser("stream", help="Token-by-token streaming completion")
+    p_stream.add_argument("prompt", help="Input prompt")
+    p_stream.add_argument("--max-tokens", type=int, default=128)
+    p_stream.add_argument("--temperature", type=float, default=1.0)
+
+    return parser
+
+
+def _req_from_args(args: argparse.Namespace) -> CompletionRequest:
+    return CompletionRequest(
+        prompt=args.prompt,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+    )
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
+    req = _req_from_args(args)
 
-    # 4. Use the arguments
-    if args.verbose:
-        print(f"Verbose mode is ON.")
+    if args.command == "completion":
+        response = post_completion(req)
+        print(response.text)
 
-    print(f"Hello, {args.name}")
+    elif args.command == "stream":
+        for chunk in post_stream(req):
+            print(chunk.text, end="", flush=True)
+        print()  # newline after stream ends
+
 
 if __name__ == "__main__":
     main()
