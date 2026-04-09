@@ -1,10 +1,10 @@
 from pathlib import Path
 import os
+from collections.abc import Iterator
+from functools import lru_cache
 
 from llama_cpp import Llama
-from collections.abc import Iterator
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends
 from fastapi.responses import StreamingResponse
 
 from domain import CompletionRequest, CompletionResponse, CompletionChunk
@@ -14,12 +14,17 @@ from domain import CompletionRequest, CompletionResponse, CompletionChunk
 # ---------------------------------------------------------------------------
 
 MODEL_PATH = Path(os.getcwd()) / "models/gemma-4-E2B-it/gemma-4-E2B-it-BF16.gguf"
-llm = Llama(
-    model_path=str(MODEL_PATH),
-    n_ctx=131072,
-    n_gpu_layers=-1,
-    verbose=True,
-)
+
+
+@lru_cache(maxsize=1)
+def get_llm() -> Llama:
+    """Carrega o modelo uma vez, na primeira request, não no import."""
+    return Llama(
+        model_path=str(MODEL_PATH),
+        n_ctx=131072,
+        n_gpu_layers=-1,
+        verbose=True,
+    )
 
 # ---------------------------------------------------------------------------
 # App
@@ -28,7 +33,7 @@ llm = Llama(
 app = FastAPI(title="LLM Server")
 
 @app.post("/v1/completions", response_model=CompletionResponse)
-def complete(req: CompletionRequest) -> CompletionResponse:
+def complete(req: CompletionRequest, llm: Llama = Depends(get_llm)) -> CompletionResponse:
     raw = llm.create_completion(
         prompt=req.prompt,
         max_tokens=req.max_tokens,
@@ -45,17 +50,17 @@ def complete(req: CompletionRequest) -> CompletionResponse:
         total_tokens=usage["total_tokens"],
     )
 
+
 @app.post("/v1/completions/stream")
-def complete_stream(req: CompletionRequest):
+def complete_stream(req: CompletionRequest, llm: Llama = Depends(get_llm)):
     def _generate() -> Iterator[str]:
-        raw_iter = llm.create_completion(
+        for raw in llm.create_completion(
             prompt=req.prompt,
             max_tokens=req.max_tokens,
             temperature=req.temperature,
             stop=req.stop,
             stream=True,
-        )
-        for raw in raw_iter:
+        ):
             choice = raw["choices"][0]
             chunk = CompletionChunk(
                 text=choice["text"],

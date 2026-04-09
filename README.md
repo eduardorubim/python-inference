@@ -16,9 +16,16 @@ CMAKE_ARGS="-DGGML_CUDA=on" \
     --package server
 ```
 
-test:
+test server with no cli:
 ```bash
 uv run server
 curl http://localhost:8000/v1/completions \
   -H "Content-Type: application/json" -d '{"prompt": "The capital of France is", "max_tokens": 32}'
+```
+
+pytest:
+```bash
+uv run pytest
+uv run --package cli pytest packages/cli/tests
+uv run --package server pytest packages/server/tests
 ```
