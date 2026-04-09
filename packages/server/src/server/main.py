@@ -1,7 +1,3 @@
-"""
-server.py — minimal OpenAI-compatible completion server
-"""
-
 from pathlib import Path
 import os
 from pydantic import BaseModel, Field
