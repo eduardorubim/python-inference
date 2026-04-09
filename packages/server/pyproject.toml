@@ -1,0 +1,22 @@
+[project]
+name = "server"
+version = "0.0.1"
+description = "Simple LLM inference server for GGUF with llama-cpp backend"
+readme = "README.md"
+authors = [
+    { name = "Eduardo Rubim", email = "eduardo@rubim.digital" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.135.3",
+    "llama-cpp-python>=0.3.20",
+    "pydantic[email,timezone]>=2.12.5",
+    "uvicorn>=0.44.0",
+]
+
+[project.scripts]
+server = "server.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
